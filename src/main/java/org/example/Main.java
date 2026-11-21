@@ -14,44 +14,44 @@ public class Main {
     }
 
     static void run(Scanner input, BrowserOpener browser) {
-        var shortener = new UrlShortener();
+        try (var shortener = new UrlShortener()) {
+            System.out.println("Здравствуйте! Доступные функции:\n" +
+                    "   Введите URL для сокращения\n" +
+                    "   go <код> для перехода\n" +
+                    "   exit для выхода\n");
 
-        System.out.println("Здравствуйте! Доступные функции:" +
-                "   Введите URL для сокращения" +
-                "   go <код> для перехода" +
-                "   exit для выхода");
-
-        while (input.hasNextLine()) {
-            String line = input.nextLine().strip();
-            String[] command = line.split("\\s+", 2);
-            if ("exit".equalsIgnoreCase(line)) {
-                return;
-            }
-
-            try {
-                if ("go".equalsIgnoreCase(command[0])) {
-                    follow(shortener, command, browser);
-                    continue;
-                }
-
-                System.out.printf("Введите лимит переходов (Enter — %d).%n", UrlShortener.DEFAULT_VISIT_LIMIT);
-                if (!input.hasNextLine()) {
+            while (input.hasNextLine()) {
+                String line = input.nextLine().strip();
+                String[] command = line.split("\\s+", 2);
+                if ("exit".equalsIgnoreCase(line)) {
                     return;
                 }
-                String limit = input.nextLine().strip();
-                if ("exit".equalsIgnoreCase(limit)) {
-                    return;
+
+                try {
+                    if ("go".equalsIgnoreCase(command[0])) {
+                        follow(shortener, command, browser);
+                        continue;
+                    }
+
+                    System.out.printf("Введите лимит переходов (Enter — %d).%n", UrlShortener.DEFAULT_VISIT_LIMIT);
+                    if (!input.hasNextLine()) {
+                        return;
+                    }
+                    String limit = input.nextLine().strip();
+                    if ("exit".equalsIgnoreCase(limit)) {
+                        return;
+                    }
+                    String code = limit.isEmpty()
+                            ? shortener.shorten(line)
+                            : shortener.shorten(line, Integer.parseInt(limit));
+                    System.out.println("Короткая ссылка: /" + code);
+                } catch (NumberFormatException e) {
+                    System.out.println("Лимит переходов должен быть положительным целым числом.");
+                } catch (IllegalArgumentException | IllegalStateException e) {
+                    System.out.println(e.getMessage());
+                } catch (IOException e) {
+                    System.out.println("Не удалось открыть браузер. Переход не засчитан.");
                 }
-                String code = limit.isEmpty()
-                        ? shortener.shorten(line)
-                        : shortener.shorten(line, Integer.parseInt(limit));
-                System.out.println("Короткая ссылка: /" + code);
-            } catch (NumberFormatException e) {
-                System.out.println("Лимит переходов должен быть положительным целым числом.");
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                System.out.println(e.getMessage());
-            } catch (IOException e) {
-                System.out.println("Не удалось открыть браузер. Переход не засчитан.");
             }
         }
     }
