@@ -7,6 +7,8 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -16,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 public final class UrlShortener implements AutoCloseable {
     static final int DEFAULT_VISIT_LIMIT = 10;
     static final String LIMIT_REACHED = "Лимит переходов исчерпан. Ссылка недоступна. Создайте новую ссылку.";
+    static final String INVALID_LIMIT = "Лимит переходов должен быть положительным целым числом.";
     private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final int CODE_LENGTH = 6;
     private static final Duration LINK_LIFETIME = Duration.ofHours(24);
@@ -23,6 +26,7 @@ public final class UrlShortener implements AutoCloseable {
 
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentMap<String, Link> links = new ConcurrentHashMap<>();
+    private final Set<UUID> users = ConcurrentHashMap.newKeySet();
     private final Clock clock;
     private final ScheduledExecutorService cleanup;
 
@@ -41,40 +45,89 @@ public final class UrlShortener implements AutoCloseable {
                 CLEANUP_INTERVAL_SECONDS, CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
-    public String shorten(String url) {
-        return shorten(url, DEFAULT_VISIT_LIMIT);
-    }
-
-    public String shorten(String url, int visitLimit) {
-        if (visitLimit <= 0) {
-            throw new IllegalArgumentException("Лимит переходов должен быть положительным целым числом.");
+    public CreatedLink shorten(String url, int visitLimit, UUID owner) {
+        validateLimit(visitLimit);
+        URI destination = parseHttpUrl(url);
+        if (owner == null) {
+            do {
+                owner = UUID.randomUUID();
+            } while (!users.add(owner));
+        } else if (!hasUser(owner)) {
+            throw new IllegalArgumentException("Пользователь не найден.");
         }
-        var link = new Link(parseHttpUrl(url), visitLimit, clock.instant().plus(LINK_LIFETIME));
+        var link = new Link(destination, visitLimit, clock.instant().plus(LINK_LIFETIME), owner);
         String code;
         do {
             code = generateCode();
         } while (links.putIfAbsent(code, link) != null);
-        return code;
+        return new CreatedLink(code, owner);
+    }
+
+    public boolean hasUser(UUID user) {
+        return user != null && users.contains(user);
     }
 
     public Visit follow(String code, BrowserOpener browser) throws IOException {
-        Link link = links.get(code);
-        if (link == null) {
-            throw new IllegalArgumentException("Короткая ссылка не найдена.");
-        }
-
+        Link link = findLink(code);
         synchronized (link) {
-            if (link.isExpiredAt(clock.instant())) {
-                links.remove(code, link);
-                throw new IllegalStateException("Срок действия ссылки истёк. Создайте новую ссылку.");
-            }
-            if (link.visits == link.visitLimit) {
+            requireActiveLink(code, link);
+            if (link.visits >= link.visitLimit) {
                 throw new IllegalStateException(LIMIT_REACHED);
             }
 
             browser.open(link.destination);
             link.visits++;
             return new Visit(link.visits, link.visitLimit);
+        }
+    }
+
+    public Visit changeVisitLimit(String code, UUID owner, int visitLimit) {
+        validateLimit(visitLimit);
+        Link link = findOwnedLink(code, owner);
+        synchronized (link) {
+            requireActiveLink(code, link);
+            link.visitLimit = visitLimit;
+            return new Visit(link.visits, link.visitLimit);
+        }
+    }
+
+    public void delete(String code, UUID owner) {
+        Link link = findOwnedLink(code, owner);
+        synchronized (link) {
+            requireActiveLink(code, link);
+            links.remove(code, link);
+        }
+    }
+
+    private Link findLink(String code) {
+        Link link = links.get(code);
+        if (link == null) {
+            throw new IllegalArgumentException("Короткая ссылка не найдена.");
+        }
+        return link;
+    }
+
+    private Link findOwnedLink(String code, UUID owner) {
+        Link link = findLink(code);
+        if (!link.owner.equals(owner)) {
+            throw new IllegalStateException("Управлять ссылкой может только её создатель.");
+        }
+        return link;
+    }
+
+    private void requireActiveLink(String code, Link link) {
+        if (link.isExpiredAt(clock.instant())) {
+            links.remove(code, link);
+            throw new IllegalStateException("Срок действия ссылки истёк. Создайте новую ссылку.");
+        }
+        if (links.get(code) != link) {
+            throw new IllegalArgumentException("Короткая ссылка не найдена.");
+        }
+    }
+
+    private static void validateLimit(int visitLimit) {
+        if (visitLimit <= 0) {
+            throw new IllegalArgumentException(INVALID_LIMIT);
         }
     }
 
@@ -90,14 +143,16 @@ public final class UrlShortener implements AutoCloseable {
 
     private static final class Link {
         private final URI destination;
-        private final int visitLimit;
         private final Instant expiresAt;
+        private final UUID owner;
+        private int visitLimit;
         private int visits;
 
-        private Link(URI destination, int visitLimit, Instant expiresAt) {
+        private Link(URI destination, int visitLimit, Instant expiresAt, UUID owner) {
             this.destination = destination;
             this.visitLimit = visitLimit;
             this.expiresAt = expiresAt;
+            this.owner = owner;
         }
 
         private boolean isExpiredAt(Instant now) {
