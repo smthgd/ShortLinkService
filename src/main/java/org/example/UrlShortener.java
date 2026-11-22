@@ -5,7 +5,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -16,18 +15,16 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class UrlShortener implements AutoCloseable {
-    static final int DEFAULT_VISIT_LIMIT = 10;
     static final String LIMIT_REACHED = "Лимит переходов исчерпан. Ссылка недоступна. Создайте новую ссылку.";
     static final String INVALID_LIMIT = "Лимит переходов должен быть положительным целым числом.";
     private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    private static final int CODE_LENGTH = 6;
-    private static final Duration LINK_LIFETIME = Duration.ofHours(24);
-    private static final long CLEANUP_INTERVAL_SECONDS = 1;
+    private static final int MAX_CODE_ATTEMPTS = 100;
 
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentMap<String, Link> links = new ConcurrentHashMap<>();
     private final Set<UUID> users = ConcurrentHashMap.newKeySet();
     private final Clock clock;
+    private final AppConfig config;
     private final ScheduledExecutorService cleanup;
 
     public UrlShortener() {
@@ -36,31 +33,42 @@ public final class UrlShortener implements AutoCloseable {
 
     UrlShortener(Clock clock) {
         this.clock = clock;
+        config = AppConfig.load();
         cleanup = Executors.newSingleThreadScheduledExecutor(task -> {
             var thread = new Thread(task, "expired-link-cleanup");
             thread.setDaemon(true);
             return thread;
         });
         cleanup.scheduleWithFixedDelay(this::removeExpiredLinks,
-                CLEANUP_INTERVAL_SECONDS, CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
+                config.cleanupIntervalSeconds(), config.cleanupIntervalSeconds(), TimeUnit.SECONDS);
     }
 
     public CreatedLink shorten(String url, int visitLimit, UUID owner) {
         validateLimit(visitLimit);
         URI destination = parseHttpUrl(url);
-        if (owner == null) {
+        boolean newUser = owner == null;
+        if (newUser) {
             do {
                 owner = UUID.randomUUID();
             } while (!users.add(owner));
         } else if (!hasUser(owner)) {
             throw new IllegalArgumentException("Пользователь не найден.");
         }
-        var link = new Link(destination, visitLimit, clock.instant().plus(LINK_LIFETIME), owner);
-        String code;
-        do {
-            code = generateCode();
-        } while (links.putIfAbsent(code, link) != null);
-        return new CreatedLink(code, owner);
+        var link = new Link(destination, visitLimit, clock.instant().plus(config.linkLifetime()), owner);
+        for (int attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
+            String code = generateCode();
+            if (links.putIfAbsent(code, link) == null) {
+                return new CreatedLink(code, owner);
+            }
+        }
+        if (newUser) {
+            users.remove(owner);
+        }
+        throw new IllegalStateException("Не удалось подобрать свободный код. Увеличьте длину кода в настройках.");
+    }
+
+    int defaultVisitLimit() {
+        return config.defaultVisitLimit();
     }
 
     public boolean hasUser(UUID user) {
@@ -161,8 +169,8 @@ public final class UrlShortener implements AutoCloseable {
     }
 
     private String generateCode() {
-        var code = new StringBuilder(CODE_LENGTH);
-        for (int i = 0; i < CODE_LENGTH; i++) {
+        var code = new StringBuilder(config.codeLength());
+        for (int i = 0; i < config.codeLength(); i++) {
             code.append(ALPHABET.charAt(random.nextInt(ALPHABET.length())));
         }
         return code.toString();

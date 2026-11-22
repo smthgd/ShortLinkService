@@ -12,6 +12,9 @@ public class Main {
     public static void main(String[] args) {
         try (var input = new Scanner(System.in, StandardCharsets.UTF_8)) {
             run(input, Main::openBrowser);
+        } catch (IllegalStateException e) {
+            System.err.println(e.getMessage());
+            System.exit(1);
         }
     }
 
@@ -63,7 +66,7 @@ public class Main {
                         }
                         default -> {
                             System.out.printf("Введите лимит переходов (Enter — %d).%n",
-                                    UrlShortener.DEFAULT_VISIT_LIMIT);
+                                    shortener.defaultVisitLimit());
                             if (!input.hasNextLine()) {
                                 return;
                             }
@@ -71,7 +74,7 @@ public class Main {
                             if ("exit".equalsIgnoreCase(limit)) {
                                 return;
                             }
-                            int visitLimit = limit.isEmpty() ? UrlShortener.DEFAULT_VISIT_LIMIT
+                            int visitLimit = limit.isEmpty() ? shortener.defaultVisitLimit()
                                     : Integer.parseInt(limit);
                             CreatedLink link = shortener.shorten(line, visitLimit, currentUser);
                             if (currentUser == null) {
