@@ -33,8 +33,12 @@ public final class UrlShortener implements AutoCloseable {
     }
 
     UrlShortener(Clock clock) {
+        this(clock, AppConfig.load());
+    }
+
+    UrlShortener(Clock clock, AppConfig config) {
         this.clock = clock;
-        config = AppConfig.load();
+        this.config = config;
         cleanup = Executors.newSingleThreadScheduledExecutor(task -> {
             var thread = new Thread(task, "expired-link-cleanup");
             thread.setDaemon(true);
@@ -146,7 +150,7 @@ public final class UrlShortener implements AutoCloseable {
         }
     }
 
-    private void removeExpiredLinks() {
+    void removeExpiredLinks() {
         Instant now = clock.instant();
         links.forEach((code, state) -> {
             if (state instanceof Link link && link.isExpiredAt(now)) {
