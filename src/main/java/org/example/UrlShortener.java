@@ -17,11 +17,12 @@ import java.util.concurrent.TimeUnit;
 public final class UrlShortener implements AutoCloseable {
     static final String LIMIT_REACHED = "Лимит переходов исчерпан. Ссылка недоступна. Создайте новую ссылку.";
     static final String INVALID_LIMIT = "Лимит переходов должен быть положительным целым числом.";
+    private static final String LINK_EXPIRED = "Срок действия ссылки истёк. Создайте новую ссылку.";
     private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final int MAX_CODE_ATTEMPTS = 100;
 
     private final SecureRandom random = new SecureRandom();
-    private final ConcurrentMap<String, Link> links = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, LinkState> links = new ConcurrentHashMap<>();
     private final Set<UUID> users = ConcurrentHashMap.newKeySet();
     private final Clock clock;
     private final AppConfig config;
@@ -108,11 +109,7 @@ public final class UrlShortener implements AutoCloseable {
     }
 
     private Link findLink(String code) {
-        Link link = links.get(code);
-        if (link == null) {
-            throw new IllegalArgumentException("Короткая ссылка не найдена.");
-        }
-        return link;
+        return requireLink(links.get(code));
     }
 
     private Link findOwnedLink(String code, UUID owner) {
@@ -124,13 +121,23 @@ public final class UrlShortener implements AutoCloseable {
     }
 
     private void requireActiveLink(String code, Link link) {
-        if (link.isExpiredAt(clock.instant())) {
-            links.remove(code, link);
-            throw new IllegalStateException("Срок действия ссылки истёк. Создайте новую ссылку.");
-        }
-        if (links.get(code) != link) {
+        if (requireLink(links.get(code)) != link) {
             throw new IllegalArgumentException("Короткая ссылка не найдена.");
         }
+        if (link.isExpiredAt(clock.instant())) {
+            links.replace(code, link, ExpiredLink.INSTANCE);
+            throw new IllegalStateException(LINK_EXPIRED);
+        }
+    }
+
+    private static Link requireLink(LinkState state) {
+        if (state == ExpiredLink.INSTANCE) {
+            throw new IllegalStateException(LINK_EXPIRED);
+        }
+        if (state instanceof Link link) {
+            return link;
+        }
+        throw new IllegalArgumentException("Короткая ссылка не найдена.");
     }
 
     private static void validateLimit(int visitLimit) {
@@ -141,7 +148,11 @@ public final class UrlShortener implements AutoCloseable {
 
     private void removeExpiredLinks() {
         Instant now = clock.instant();
-        links.values().removeIf(link -> link.isExpiredAt(now));
+        links.forEach((code, state) -> {
+            if (state instanceof Link link && link.isExpiredAt(now)) {
+                links.replace(code, link, ExpiredLink.INSTANCE);
+            }
+        });
     }
 
     @Override
@@ -149,7 +160,14 @@ public final class UrlShortener implements AutoCloseable {
         cleanup.shutdownNow();
     }
 
-    private static final class Link {
+    private sealed interface LinkState permits Link, ExpiredLink {
+    }
+
+    private enum ExpiredLink implements LinkState {
+        INSTANCE
+    }
+
+    private static final class Link implements LinkState {
         private final URI destination;
         private final Instant expiresAt;
         private final UUID owner;
