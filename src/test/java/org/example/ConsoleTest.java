@@ -11,18 +11,17 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
-import org.junit.jupiter.api.AfterEach;
+import org.example.cli.Console;
+import org.example.core.BrowserOpener;
+import org.example.core.UrlShortener;
+import org.example.core.Visit;
+import org.example.infra.InMemoryLinkStore;
 import org.junit.jupiter.api.Test;
 
-class MainTest {
+class ConsoleTest {
     private static final String URL = "https://example.org/article";
     private final TestClock clock = new TestClock();
-    private final UrlShortener service = new UrlShortener(clock, new AppConfig(Duration.ofHours(1), 4, 8, 3600));
-
-    @AfterEach
-    void closeService() {
-        service.close();
-    }
+    private final UrlShortener service = new UrlShortener(new InMemoryLinkStore(), clock, Duration.ofHours(1), 8);
 
     @Test
     void createsLinksForDifferentUsersUsingTheDefaultLimit() throws IOException {
@@ -99,7 +98,7 @@ class MainTest {
     private String run(String script, BrowserOpener browser) {
         var bytes = new ByteArrayOutputStream();
         try (var input = new Scanner(script); var output = new PrintStream(bytes, false, UTF_8)) {
-            Main.run(input, browser, service, output);
+            Console.run(input, output, service, browser, 4);
         }
         return bytes.toString(UTF_8);
     }

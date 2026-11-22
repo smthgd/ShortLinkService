@@ -9,7 +9,7 @@
 Выполните из корня проекта:
 
 ```sh
-javac -encoding UTF-8 -d target/classes src/main/java/org/example/*.java
+javac -encoding UTF-8 -d target/classes -sourcepath src/main/java src/main/java/org/example/Main.java
 java -cp target/classes org.example.Main
 ```
 

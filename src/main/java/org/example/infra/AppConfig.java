@@ -1,4 +1,4 @@
-package org.example;
+package org.example.infra;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -6,8 +6,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Properties;
 
-record AppConfig(Duration linkLifetime, int defaultVisitLimit, int codeLength, int cleanupIntervalSeconds) {
-    static AppConfig load() {
+public record AppConfig(Duration linkLifetime, int defaultVisitLimit, int codeLength, int cleanupIntervalSeconds) {
+    public static AppConfig load() {
         Path path = Path.of("application.properties");
         var properties = new Properties();
         try (var reader = Files.newBufferedReader(path)) {

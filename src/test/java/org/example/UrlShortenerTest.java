@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
+import org.example.core.BrowserOpener;
+import org.example.core.UrlShortener;
+import org.example.core.Visit;
+import org.example.infra.InMemoryLinkStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -17,12 +20,7 @@ class UrlShortenerTest {
     private static final BrowserOpener MUST_NOT_OPEN = uri -> fail("Браузер не должен открываться");
 
     private final TestClock clock = new TestClock();
-    private final UrlShortener service = new UrlShortener(clock, new AppConfig(Duration.ofHours(1), 10, 6, 3600));
-
-    @AfterEach
-    void closeService() {
-        service.close();
-    }
+    private final UrlShortener service = new UrlShortener(new InMemoryLinkStore(), clock, Duration.ofHours(1), 6);
 
     @Test
     void givesDifferentCodesToDifferentUsersForTheSameUrl() {
@@ -98,14 +96,13 @@ class UrlShortenerTest {
     @ValueSource(ints = {1, 24})
     void blocksExactlyAtTheConfiguredExpiry(int hours) throws IOException {
         Duration ttl = Duration.ofHours(hours);
-        try (var configured = new UrlShortener(clock, new AppConfig(ttl, 10, 6, 3600))) {
-            var link = configured.shorten(URL, 2, null);
-            clock.advance(ttl.minusNanos(1));
-            assertEquals(new Visit(1, 2), configured.follow(link.code(), IGNORE));
-            clock.advance(Duration.ofNanos(1));
-            var error = assertThrows(IllegalStateException.class, () -> configured.follow(link.code(), MUST_NOT_OPEN));
-            assertTrue(error.getMessage().startsWith("Срок действия ссылки истёк"));
-        }
+        var configured = new UrlShortener(new InMemoryLinkStore(), clock, ttl, 6);
+        var link = configured.shorten(URL, 2, null);
+        clock.advance(ttl.minusNanos(1));
+        assertEquals(new Visit(1, 2), configured.follow(link.code(), IGNORE));
+        clock.advance(Duration.ofNanos(1));
+        var error = assertThrows(IllegalStateException.class, () -> configured.follow(link.code(), MUST_NOT_OPEN));
+        assertTrue(error.getMessage().startsWith("Срок действия ссылки истёк"));
     }
 
     @Test
