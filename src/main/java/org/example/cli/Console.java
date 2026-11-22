@@ -14,7 +14,7 @@ public final class Console {
     }
 
     public static void run(Scanner input, PrintStream output, UrlShortener shortener,
-                           BrowserOpener browser, int defaultVisitLimit) {
+            BrowserOpener browser, int defaultVisitLimit) {
         UUID currentUser = null;
         output.println("Здравствуйте! Доступные функции:\n" +
                 "   Введите URL для сокращения\n" +
