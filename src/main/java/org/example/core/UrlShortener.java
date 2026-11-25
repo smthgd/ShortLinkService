@@ -86,6 +86,10 @@ public final class UrlShortener {
         }
     }
 
+    public void removeExpiredLinks() {
+        store.removeExpired(clock.instant());
+    }
+
     private Link findLink(String code) {
         return requireLink(store.find(code));
     }
@@ -122,10 +126,6 @@ public final class UrlShortener {
         if (visitLimit <= 0) {
             throw new IllegalArgumentException(INVALID_LIMIT);
         }
-    }
-
-    public void removeExpiredLinks() {
-        store.removeExpired(clock.instant());
     }
 
     private String generateCode() {
