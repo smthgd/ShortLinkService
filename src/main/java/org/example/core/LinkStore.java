@@ -4,8 +4,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Stores users and link state for a session. Conditional updates are atomic.
- * A live entry retains the same Link instance so operations can synchronize on it.
+ * Хранит пользователей и состояния ссылок в рамках сеанса. Условные изменения выполняются атомарно.
+ * Для действующей ссылки хранилище возвращает один и тот же экземпляр {@link Link},
+ * чтобы операции могли синхронизироваться на нём.
  */
 public interface LinkStore {
     sealed interface State permits Link, Expired {

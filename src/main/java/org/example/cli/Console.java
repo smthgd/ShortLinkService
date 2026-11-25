@@ -16,14 +16,16 @@ public final class Console {
     public static void run(Scanner input, PrintStream output, UrlShortener shortener,
             BrowserOpener browser, int defaultVisitLimit) {
         UUID currentUser = null;
-        output.println("Здравствуйте! Доступные функции:\n" +
-                "   Введите URL для сокращения\n" +
-                "   go <код> для перехода\n" +
-                "   user <UUID> для выбора пользователя\n" +
-                "   user new для начала работы без выбранного пользователя\n" +
-                "   edit <код> <лимит> для изменения лимита своей ссылки\n" +
-                "   delete <код> для удаления своей ссылки\n" +
-                "   exit для выхода\n");
+        output.println("""
+            Здравствуйте! Доступные функции:
+               Введите URL для сокращения
+               go <код> для перехода
+               user <UUID> для выбора пользователя
+               user new для начала работы без выбранного пользователя
+               edit <код> <лимит> для изменения лимита своей ссылки
+               delete <код> для удаления своей ссылки
+               exit для выхода
+            """);
 
         while (input.hasNextLine()) {
             String line = input.nextLine().strip();

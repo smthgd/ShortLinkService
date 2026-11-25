@@ -111,7 +111,7 @@ class UrlShortenerTest {
         clock.advance(Duration.ofHours(1));
         service.removeExpiredLinks();
 
-        // An earlier clock reading cannot make a link available after cleanup.
+        // Перевод часов назад не восстанавливает доступ к ссылке после очистки.
         clock.advance(Duration.ofHours(-1));
         var error = assertThrows(IllegalStateException.class, () -> service.follow(link.code(), MUST_NOT_OPEN));
         assertTrue(error.getMessage().startsWith("Срок действия ссылки истёк"));
